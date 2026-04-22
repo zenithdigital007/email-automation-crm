@@ -6,7 +6,7 @@ const { startReplyTrackerWorker } = require('./workers/replyTrackerWorker');
 const PORT = process.env.PORT || 3000;
 
 // ─── Start Server ──────────────────────────────────────────────────────────────
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🚀 Email Automation CRM backend running on port ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/health`);
   console.log(`   Auth:   http://localhost:${PORT}/auth/google\n`);
