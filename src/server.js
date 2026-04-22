@@ -3,7 +3,11 @@ const app = require('./app');
 const { startSendEmailWorker } = require('./workers/sendEmailWorker');
 const { startReplyTrackerWorker } = require('./workers/replyTrackerWorker');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
+
+if (!PORT) {
+  throw new Error("PORT not defined in environment");
+}
 
 // ─── Start Server ──────────────────────────────────────────────────────────────
 const server = app.listen(PORT, "0.0.0.0", () => {
