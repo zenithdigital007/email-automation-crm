@@ -19,6 +19,10 @@ app.use(express.json());
  *
  * Attach userId to req so all controllers can use req.userId.
  */
+app.get('/', (req, res) => {
+  res.send('🚀 Client Pilot API is running');
+});
+
 app.use((req, res, next) => {
   // Skip auth on auth routes
   if (req.path.startsWith('/auth')) return next();
@@ -120,6 +124,13 @@ app.post('/debug/reply-check', async (_req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+app.get('/', (req, res) => {
+  res.send(`
+    <h2>🚀 Client Pilot API is Live</h2>
+    <p>Status: Running</p>
+  `);
 });
 
 // GET /debug/sent-leads — shows raw DB state for all sent leads
