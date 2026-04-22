@@ -9,7 +9,20 @@ const campaignRoutes = require('./routes/campaign.routes');
 const app = express();
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:5173',
+  // Strip trailing slash defensively so FRONTEND_URL=https://foo.vercel.app/ still works
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.replace(/\/$/, '')] : []),
+];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    console.warn(`[CORS] Blocked origin: ${origin}`);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+}));
 app.use(express.json());
 
 // ─── Auth Middleware ───────────────────────────────────────────────────────────
@@ -19,9 +32,7 @@ app.use(express.json());
  *
  * Attach userId to req so all controllers can use req.userId.
  */
-app.get('/', (req, res) => {
-  res.send('🚀 Client Pilot API is running');
-});
+app.get('/', (_req, res) => res.json({ status: 'ok', service: 'Email Automation CRM' }));
 
 app.use((req, res, next) => {
   // Skip auth on auth routes
@@ -113,60 +124,52 @@ app.get('/auth/me', async (req, res) => {
 app.use('/api/leads', leadRoutes);
 app.use('/api/campaigns', campaignRoutes);
 
-// ─── Debug Routes (remove in production) ──────────────────────────────────────
-
-// POST /debug/reply-check — triggers one reply tracker cycle immediately
-app.post('/debug/reply-check', async (_req, res) => {
+// ─── Debug Routes (dev only) ───────────────────────────────────────────────────
+if (process.env.NODE_ENV !== 'production') {
   const { runReplyTrackerWorker } = require('./workers/replyTrackerWorker');
-  try {
-    await runReplyTrackerWorker();
-    res.json({ ok: true, message: 'Reply tracker ran — check server logs for details.' });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
-app.get('/', (req, res) => {
-  res.send(`
-    <h2>🚀 Client Pilot API is Live</h2>
-    <p>Status: Running</p>
-  `);
-});
+  app.post('/debug/reply-check', async (_req, res) => {
+    try {
+      await runReplyTrackerWorker();
+      res.json({ ok: true, message: 'Reply tracker ran — check server logs.' });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
 
-// GET /debug/sent-leads — shows raw DB state for all sent leads
-app.get('/debug/sent-leads', async (_req, res) => {
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  app.get('/debug/sent-leads', async (_req, res) => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const { data: leads, error } = await supabase
-    .from('campaign_leads')
-    .select(`id, campaign_id, status, sent_at, leads ( id, email )`)
-    .eq('status', 'sent')
-    .gte('sent_at', sevenDaysAgo.toISOString());
+    const { data: leads, error } = await supabase
+      .from('campaign_leads')
+      .select(`id, campaign_id, status, sent_at, leads ( id, email )`)
+      .eq('status', 'sent')
+      .gte('sent_at', sevenDaysAgo.toISOString());
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: error.message });
 
-  // For each, check if email_logs has a threadId
-  const enriched = await Promise.all(
-    (leads || []).map(async (cl) => {
-      const { data: log } = await supabase
-        .from('email_logs')
-        .select('gmail_thread_id, gmail_message_id')
-        .eq('campaign_id', cl.campaign_id)
-        .eq('lead_id', cl.leads?.id)
-        .maybeSingle();
-      return {
-        campaign_lead_id: cl.id,
-        lead_email: cl.leads?.email,
-        sent_at: cl.sent_at,
-        gmail_thread_id: log?.gmail_thread_id ?? 'MISSING',
-        gmail_message_id: log?.gmail_message_id ?? 'MISSING',
-      };
-    }),
-  );
+    const enriched = await Promise.all(
+      (leads || []).map(async (cl) => {
+        const { data: log } = await supabase
+          .from('email_logs')
+          .select('gmail_thread_id, gmail_message_id')
+          .eq('campaign_id', cl.campaign_id)
+          .eq('lead_id', cl.leads?.id)
+          .maybeSingle();
+        return {
+          campaign_lead_id: cl.id,
+          lead_email: cl.leads?.email,
+          sent_at: cl.sent_at,
+          gmail_thread_id: log?.gmail_thread_id ?? 'MISSING',
+          gmail_message_id: log?.gmail_message_id ?? 'MISSING',
+        };
+      }),
+    );
 
-  res.json({ count: enriched.length, leads: enriched });
-});
+    res.json({ count: enriched.length, leads: enriched });
+  });
+}
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));

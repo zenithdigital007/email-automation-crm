@@ -1,8 +1,13 @@
 import axios from 'axios';
 
-// Vite proxy forwards /api → http://localhost:3000/api
+// In dev: VITE_API_URL is not set, so Vite's proxy handles /api → localhost:3000
+// In production: VITE_API_URL = https://email-automation-crm.onrender.com
+const baseURL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL,
   headers: { 'Content-Type': 'application/json' },
 });
 
